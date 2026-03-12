@@ -12,6 +12,8 @@ This new release adds support for sparse cost matrices and a new lazy EMD solver
 - Migrate backend from deprecated `scipy.sparse.coo_matrix` to modern `scipy.sparse.coo_array` (PR #782)
 - Geomloss function now handles both scalar and slice indices for i and j (PR #785)
 - Add support for sparse cost matrices in EMD solver (PR #778, Issue #397)
+- Added UOT1D with Frank-Wolfe in `ot.unbalanced.uot_1d` (PR #765)
+- Add Sliced UOT and Unbalanced Sliced OT in `ot/unbalanced/_sliced.py` (PR #765)
 
 #### Closed issues
 
@@ -26,6 +28,7 @@ This new release adds support for sparse cost matrices and a new lazy EMD solver
 - Fix code coverage (PR #791)
 - Fix test of the version of jax in `ot.backend` (PR #794)
 - Reverting the openmp fix on macOS (PR #789) for macOS (PR #797)
+- Align documentation build dependencies and doc extras (PR #801)
 
 
 ## 0.9.6.post1
