@@ -12,7 +12,7 @@ from ..utils import OTResult
 from ot.backend import get_backend
 from ot.batch._linear import loss_linear_batch
 from ot.batch._utils import bmv, bop, bregman_log_projection_batch
-from ot.utils import list_to_array
+from ot.utils import deprecated, list_to_array
 
 
 def tensor_batch(
@@ -227,7 +227,7 @@ def div_between_product_batch(mu, nu, alpha, beta, divergence, nx=None):
     return res
 
 
-def loss_quadratic_batch(L, T, recompute_const=False, symmetric=True, nx=None):
+def loss_quadratic_tensor_batch(L, T, recompute_const=False, symmetric=True, nx=None):
     r"""
     Computes the gromov-wasserstein cost given a cost tensor and transport plan. Batched version.
 
@@ -273,7 +273,36 @@ def loss_quadratic_batch(L, T, recompute_const=False, symmetric=True, nx=None):
     return nx.sum(LT * T, axis=(1, 2))
 
 
+@deprecated("Use ot.batch.loss_quadratic_batch instead.")
 def loss_quadratic_samples_batch(
+    a,
+    b,
+    C1,
+    C2,
+    T,
+    loss="sqeuclidean",
+    symmetric=None,
+    nx=None,
+    logits=None,
+    recompute_const=False,
+    log=False,
+):
+    return loss_quadratic_batch(
+        a,
+        b,
+        C1,
+        C2,
+        T,
+        loss=loss,
+        symmetric=symmetric,
+        nx=nx,
+        logits=logits,
+        recompute_const=recompute_const,
+        log=log,
+    )
+
+
+def loss_quadratic_batch(
     a,
     b,
     C1,
@@ -288,6 +317,7 @@ def loss_quadratic_samples_batch(
     nx=None,
     logits=None,
     recompute_const=False,
+    log=False,
 ):
     r"""
     Computes the gromov-wasserstein for samples C1, C2 and transport plan. Batched version.
@@ -330,6 +360,9 @@ def loss_quadratic_samples_batch(
     recompute_const : bool, optional
         Whether to recompute the constant term. Default is False. This should be set to True if T does not satisfy the marginal constraints.
         Will be set to True if unbalanced is not None.
+    log : bool, optional
+        If True, also returns a dictionary containing the different terms of
+        the loss.
 
 
     Examples
@@ -355,6 +388,14 @@ def loss_quadratic_samples_batch(
     if nx is None:
         nx = get_backend(T)
 
+    if log:
+        log_dict = {}
+        log_dict["value_quadratic"] = None
+        log_dict["value_linear"] = None
+        log_dict["value_unbalanced"] = None
+    else:
+        log_dict = None
+
     if isinstance(loss, str) and loss in ["sqeuclidean", "kl", "l2"]:
         L = tensor_batch(
             a, b, C1, C2, symmetric=symmetric, nx=nx, loss=loss, logits=logits
@@ -365,11 +406,16 @@ def loss_quadratic_samples_batch(
     if unbalanced is not None:
         recompute_const = True
 
-    quadratic = loss_quadratic_batch(
+    quadratic = loss_quadratic_tensor_batch(
         L, T, recompute_const=recompute_const, symmetric=symmetric, nx=nx
     )
+    if log:
+        log_dict["value_quadratic"] = quadratic
 
     if unbalanced is None and M is None:
+        if log:
+            log_dict["value"] = quadratic
+            return quadratic, log_dict
         return quadratic
 
     B = T.shape[0]
@@ -406,6 +452,8 @@ def loss_quadratic_samples_batch(
             divergence=unbalanced_type,
             nx=nx,
         )
+        if log:
+            log_dict["value_unbalanced"] = unbalanced_term
 
     if M is not None:
         if alpha is None:
@@ -418,15 +466,22 @@ def loss_quadratic_samples_batch(
                     f"If alpha is not a scalar, it must have shape ({B},), got {alpha.shape}"
                 )
         linear = loss_linear_batch(M, T, nx=nx)
+        if log:
+            log_dict["value_linear"] = linear
 
     if M is not None and unbalanced is not None:
-        return (1 - alpha) * linear + alpha * quadratic + unbalanced * unbalanced_term
+        value = (1 - alpha) * linear + alpha * quadratic + unbalanced * unbalanced_term
 
     elif M is not None and unbalanced is None:
-        return (1 - alpha) * linear + alpha * quadratic
+        value = (1 - alpha) * linear + alpha * quadratic
 
     else:
-        return quadratic + unbalanced * unbalanced_term
+        value = quadratic + unbalanced * unbalanced_term
+
+    if log:
+        log_dict["value"] = value
+        return value, log_dict
+    return value
 
 
 def solve_gromov_batch(
@@ -641,7 +696,7 @@ def solve_gromov_batch(
         T = nx.detach(T)
 
     value_linear = loss_linear_batch(M, T, nx=nx)
-    value_quadratic = loss_quadratic_batch(
+    value_quadratic = loss_quadratic_tensor_batch(
         L, T, nx=nx, recompute_const=True, symmetric=symmetric
     )  # Always recompute const for accurate value
     value = (1 - alpha) * value_linear + alpha * value_quadratic

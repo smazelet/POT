@@ -21,7 +21,7 @@ import matplotlib.pylab as pl
 import torch
 from time import perf_counter
 import ot
-from ot.batch._quadratic import loss_quadratic_samples_batch, tensor_batch
+from ot.batch._quadratic import loss_quadratic_batch, tensor_batch
 from ot.gromov import fused_unbalanced_gromov_wasserstein
 from sklearn.manifold import MDS
 
@@ -139,13 +139,8 @@ C2_torch = torch.tensor(C2[None, :, :])
 M_torch = torch.tensor(M[None, :, :])
 L = tensor_batch(a_torch, b_torch, C1_torch, C2_torch, loss="sqeuclidean")
 
-alpha_batch = 0.5
-# `loss_fugw_batch` uses alpha as: alpha * quadratic + (1 - alpha) * linear
-# while the dedicated solver uses alpha as the coefficient of the linear term.
-alpha_bcd = (1 - alpha_batch) / alpha_batch
-
-reg_marginals_batch = 0.5
-reg_marginals_bcd = reg_marginals_batch / (2 * alpha_batch)
+alpha = 0.5
+reg_marginals = 0.5
 lr = 5e-2
 nb_iter_max = 1500
 tol = 1e-7
@@ -162,15 +157,15 @@ for i in range(nb_iter_max):
     optimizer.zero_grad()
     # Positive transport plan parameterized as log(1 + exp(T)).
     plan_torch = torch.nn.functional.softplus(T_torch)
-    loss = loss_quadratic_samples_batch(
+    loss = loss_quadratic_batch(
         a_torch,
         b_torch,
         C1_torch,
         C2_torch,
         plan_torch,
         M_torch,
-        alpha=alpha_batch,
-        unbalanced=reg_marginals_batch,
+        alpha=alpha,
+        unbalanced=reg_marginals,
         unbalanced_type="kl",
         recompute_const=True,
     )[0]
@@ -200,15 +195,15 @@ T_adam = torch.nn.functional.softplus(T_torch).detach().cpu().numpy()[0]
 
 def evaluate_batch_fugw_loss(plan):
     plan_torch = torch.tensor(plan[None, :, :], dtype=M_torch.dtype)
-    loss = loss_quadratic_samples_batch(
+    loss = loss_quadratic_batch(
         a_torch,
         b_torch,
         C1_torch,
         C2_torch,
         plan_torch,
         M_torch,
-        alpha=alpha_batch,
-        unbalanced=reg_marginals_batch,
+        alpha=alpha,
+        unbalanced=reg_marginals,
         unbalanced_type="kl",
         recompute_const=True,
     )[0]
@@ -216,28 +211,14 @@ def evaluate_batch_fugw_loss(plan):
 
 
 tic = perf_counter()
-T_bcd, _, log = fused_unbalanced_gromov_wasserstein(
-    C1,
-    C2,
-    wx=a,
-    wy=b,
-    reg_marginals=reg_marginals_bcd,
-    divergence="kl",
-    unbalanced_solver="mm",
-    alpha=alpha_bcd,
-    M=M,
-    init_pi=np.outer(a, b),
-    max_iter=200,
-    tol=tol,
-    max_iter_ot=200,
-    tol_ot=1e-7,
-    log=True,
+result = ot.solve_gromov(
+    C1, C2, M, a, b, alpha=alpha, reg=0, unbalanced_type="kl", unbalanced=reg_marginals
 )
 time_bcd = perf_counter() - tic
 
 loss_adam_final = evaluate_batch_fugw_loss(T_adam)
+T_bcd = result.plan
 loss_bcd_final = evaluate_batch_fugw_loss(T_bcd)
-print(log["fugw_cost"])
 mass_bcd = T_bcd.sum()
 
 pl.figure(2, (10, 4))
