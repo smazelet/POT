@@ -56,8 +56,8 @@ def test_solve_gromov_batch():
         alpha=alpha,
         reg=reg,
         M=M,
-        C1=C1,
-        C2=C2,
+        Ca=C1,
+        Cb=C2,
         max_iter=max_iter,
         tol=tol,
         max_iter_inner=max_iter_inner,
@@ -104,11 +104,11 @@ def test_all(loss, logits):
         C = np.abs(C) + 1e-6
         C = C / np.sum(C, axis=-1, keepdims=True)
 
-    res = solve_gromov_batch(C1=C, C2=C, a=a, b=a, loss=loss, logits=logits)
+    res = solve_gromov_batch(Ca=C, Cb=C, a=a, b=a, loss=loss, logits=logits)
 
     loss1 = res.value_quad
     loss2 = loss_quadratic_batch(
-        a=a, b=a, C1=C, C2=C, T=res.plan, loss=loss, logits=logits
+        a=a, b=a, Ca=C, Cb=C, T=res.plan, loss=loss, logits=logits
     )
     np.testing.assert_allclose(loss1, loss2, atol=1e-5)
 
@@ -122,7 +122,7 @@ def test_gradients_torch(grad):
     d = 2
     C = torch.randn((batchsize, n, n, d), requires_grad=True)
     res = solve_gromov_batch(
-        C1=C, C2=C, a=None, b=None, loss="sqeuclidean", logits=False, grad=grad
+        Ca=C, Cb=C, a=None, b=None, loss="sqeuclidean", logits=False, grad=grad
     )
     loss = res.value.sum()
     loss_plan = res.plan.sum()
@@ -143,7 +143,7 @@ def test_backend(nx):
     d = 2
     C = np.random.randn(batchsize, n, n, d)
     C = nx.from_numpy(C)
-    solve_gromov_batch(C1=C, C2=C, a=None, b=None, loss="sqeuclidean", logits=False)
+    solve_gromov_batch(Ca=C, Cb=C, a=None, b=None, loss="sqeuclidean", logits=False)
 
 
 @pytest.mark.parametrize(
